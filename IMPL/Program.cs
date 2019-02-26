@@ -1,4 +1,5 @@
-﻿using DotNetCore.CAP;
+﻿using AutoMapper;
+using DotNetCore.CAP;
 using MediatR;
 using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Hosting;
@@ -133,7 +134,7 @@ namespace IMPL
     {
         NotFound,
         Duplicate
-    } 
+    }
     #endregion
 
     #region Result
@@ -342,11 +343,13 @@ namespace IMPL
     public class MovieRepository : IMovieRepository
     {
         private readonly Database _database;
+        private readonly IMapper _mapper;
         private readonly ICapPublisher _capPublisher;
 
-        public MovieRepository(Database database, ICapPublisher capPublisher)
+        public MovieRepository(Database database, IMapper mapper, ICapPublisher capPublisher)
         {
             _database = database;
+            _mapper = mapper;
             _capPublisher = capPublisher;
         }
 
@@ -393,11 +396,10 @@ namespace IMPL
             var nextPageNumber = hasNextPage ? pageNumber + 1 : totalPage;
             #endregion
 
-            return new PagingResult<MovieSearchOutputModel>
-            {
-                PagingHeader = new PagingHeader(pageNumber, pageSize, totalCount, totalPage, hasPrevPage, hasNextPage, prevPageNumber, nextPageNumber),
-                PagingData = await queryable.Skip(paging.PageSize * (paging.PageNumber - 1)).Take(paging.PageSize).ToListAsync()
-            };
+            var pagingHeader = new PagingHeader(pageNumber, pageSize, totalCount, totalPage, hasPrevPage, hasNextPage, prevPageNumber, nextPageNumber);
+            var pagingData = await queryable.Skip(paging.PageSize * (paging.PageNumber - 1)).Take(paging.PageSize).ToListAsync();
+
+            return new PagingResult<MovieSearchOutputModel> { PagingHeader = pagingHeader, PagingData = pagingData };
         }
 
         public async Task<RequestResult> CreateAsync(MovieCreateInputModel input)
@@ -405,11 +407,11 @@ namespace IMPL
             var entity = await _database.Movies.Where(v => v.Name == input.Name).FirstOrDefaultAsync();
             if (entity == null)
             {
-                using (var transaction = _database.Database.BeginTransaction(_capPublisher, true))
+                using (var transaction = _database.Database.BeginTransaction(_capPublisher))
                 {
                     try
                     {
-                        var movie = new Movie { Name = input.Name, DirectorId = input.DirectorId };
+                        var movie = _mapper.Map<Movie>(input);
                         _database.Movies.Add(movie);
                         await _database.SaveChangesAsync();
                         /*
@@ -417,6 +419,7 @@ namespace IMPL
                             await _database.MovieActors.AddAsync(new MovieActor { MovieId = movie.Id, ActorId = actor.ActorId });
                         await _database.SaveChangesAsync();
                         */
+                        transaction.Commit();
                     }
                     catch (Exception ex)
                     {
@@ -437,11 +440,11 @@ namespace IMPL
             var entity = await _database.Movies.Where(v => v.Name == input.Name && v.Id != input.Id).FirstOrDefaultAsync();
             if (entity == null)
             {
-                using (var transaction = _database.Database.BeginTransaction(_capPublisher, true))
+                using (var transaction = _database.Database.BeginTransaction(_capPublisher))
                 {
                     try
                     {
-                        var movie = new Movie { Id = input.Id, Name = input.Name, DirectorId = input.DirectorId };
+                        var movie = _mapper.Map<Movie>(input);
                         _database.Movies.Update(movie);
                         await _database.SaveChangesAsync();
                         #region Publisher
@@ -452,6 +455,7 @@ namespace IMPL
                             DirectorId = movie.DirectorId
                         });
                         #endregion
+                        transaction.Commit();
                     }
                     catch (Exception ex)
                     {
@@ -472,13 +476,14 @@ namespace IMPL
             var entity = await _database.Movies.Where(v => v.Id == id).FirstOrDefaultAsync();
             if (entity == null)
                 return new RequestResult { Status = false, ResponseType = ResponseType.NotFound };
-            using (var transaction = _database.Database.BeginTransaction(_capPublisher, true))
+            using (var transaction = _database.Database.BeginTransaction(_capPublisher))
             {
                 try
                 {
                     _database.Movies.Remove(entity);
                     _database.MovieActors.RemoveRange(_database.MovieActors.Where(v => v.MovieId == id).ToList());
                     await _database.SaveChangesAsync();
+                    transaction.Commit();
                 }
                 catch (Exception ex)
                 {
@@ -596,6 +601,70 @@ namespace IMPL
         public int Id { get; set; }
         public string Name { get; set; }
         public int DirectorId { get; set; }
+    }
+    #endregion
+
+    #region AutoMapper
+    public class AutoMapperProfile : Profile
+    {
+        public AutoMapperProfile()
+        {
+            CreateMap<MovieCreateInputModel, Movie>().ForMember(dest => dest.Name, src => src.MapFrom(v => v.Name))
+                                                     .ForMember(dest => dest.DirectorId, src => src.MapFrom(v => v.DirectorId))
+                                                     .ReverseMap()
+                                                     .ForMember(dest => dest.Name, src => src.MapFrom(v => v.Name))
+                                                     .ForMember(dest => dest.DirectorId, src => src.MapFrom(v => v.DirectorId));
+
+            CreateMap<MovieUpdateInputModel, Movie>().ForMember(dest => dest.Id, src => src.MapFrom(v => v.Id))
+                                                     .ForMember(dest => dest.Name, src => src.MapFrom(v => v.Name))
+                                                     .ForMember(dest => dest.DirectorId, src => src.MapFrom(v => v.DirectorId))
+                                                     .ReverseMap()
+                                                     .ForMember(dest => dest.Id, src => src.MapFrom(v => v.Id))
+                                                     .ForMember(dest => dest.Name, src => src.MapFrom(v => v.Name))
+                                                     .ForMember(dest => dest.DirectorId, src => src.MapFrom(v => v.DirectorId));
+
+            CreateMap<Claim, string>().ConstructUsing(src => src.Type)
+                                      .ReverseMap()
+                                      .ConstructUsing(src => new Claim())
+                                      .ForMember(dest => dest.Type, src => src.MapFrom(v => v));
+
+            CreateMap<Property, KeyValuePair<string, string>>().ConstructUsing(src => new KeyValuePair<string, string>(src.K, src.V))
+                                                               .ReverseMap()
+                                                               .ConstructUsing(src => new Property())
+                                                               .ForMember(dest => dest.K, src => src.MapFrom(v => v.Key))
+                                                               .ForMember(dest => dest.V, src => src.MapFrom(v => v.Value)); // V map from KeyValuePair's Value
+
+            CreateMap<Client, ClientDto>().ForMember(dest => dest.Claims, src => src.MapFrom(v => v.Claims))
+                                          .ForMember(dest => dest.Properties, src => src.MapFrom(v => v.Properties))
+                                          .ReverseMap()
+                                          .ForMember(dest => dest.Claims, src => src.MapFrom(v => v.Claims))
+                                          .ForMember(dest => dest.Properties, src => src.MapFrom(v => v.Properties));
+        }
+    }
+
+    public class Claim
+    {
+        public int Id { get; set; }
+        public string Type { get; set; }
+    }
+
+    public class Property
+    {
+        public int Id { get; set; }
+        public string K { get; set; }
+        public string V { get; set; }
+    }
+
+    public class Client
+    {
+        public List<string> Claims { get; set; } = new List<string> { "C1", "C2" };
+        public Dictionary<string, string> Properties { get; set; } = new Dictionary<string, string> { { "K1", "V1" }, { "K2", "V2" } };
+    }
+
+    public class ClientDto
+    {
+        public List<Claim> Claims { get; set; } = new List<Claim> { new Claim { Id = 1, Type = "C1" }, new Claim { Id = 1, Type = "C2" } };
+        public List<Property> Properties { get; set; } = new List<Property> { new Property { Id = 1, K = "K1", V = "V1" }, new Property { Id = 1, K = "K2", V = "V2" } };
     }
     #endregion
 }

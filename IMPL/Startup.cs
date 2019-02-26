@@ -1,4 +1,5 @@
-﻿using MediatR;
+﻿using AutoMapper;
+using MediatR;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
@@ -24,6 +25,7 @@ namespace IMPL
                 capOptions.UseRabbitMQ("localhost");// http://localhost:15672
                 capOptions.UseDashboard();// http://localhost:5000/cap
             });
+            services.AddAutoMapper();
             services.AddMediatR();
             services.AddMvc(mvcOptions =>
             {
@@ -46,3 +48,5 @@ namespace IMPL
 // Install-Package DotNetCore.CAP
 // Install-Package DotNetCore.CAP.RabbitMQ
 // Install-Package DotNetCore.CAP.SqlServer
+// Install-Package AutoMapper
+// Install-Package AutoMapper.Extensions.Microsoft.DependencyInjection
