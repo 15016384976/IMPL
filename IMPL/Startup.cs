@@ -29,8 +29,11 @@ namespace IMPL
             services.AddMediatR();
             services.AddMvc(mvcOptions =>
             {
+                mvcOptions.Filters.Add<AuthorizationFilter>();
+                mvcOptions.Filters.Add<ResourceFilter>();
                 mvcOptions.Filters.Add<ActionFilter>();
                 mvcOptions.Filters.Add<ExceptionFilter>();
+                mvcOptions.Filters.Add<ResourceFilter>();
             }).SetCompatibilityVersion(CompatibilityVersion.Version_2_1);
         }
 

@@ -163,6 +163,27 @@ namespace IMPL
     #endregion
 
     #region Filter
+    public class AuthorizationFilter : IAuthorizationFilter
+    {
+        public void OnAuthorization(AuthorizationFilterContext context)
+        {
+
+        }
+    }
+
+    public class ResourceFilter : IResourceFilter
+    {
+        public void OnResourceExecuting(ResourceExecutingContext context)
+        {
+
+        }
+
+        public void OnResourceExecuted(ResourceExecutedContext context)
+        {
+
+        }
+    }
+
     public class ActionFilter : IActionFilter
     {
         public void OnActionExecuting(ActionExecutingContext context)
@@ -193,6 +214,19 @@ namespace IMPL
         {
             var actionResult = new ActionResult { Status = false, Messages = new List<string>() { context.Exception.Message } };
             context.Result = new InternalServerErrorObjectResult(actionResult);
+        }
+    }
+
+    public class ResultFilter : IResultFilter
+    {
+        public void OnResultExecuting(ResultExecutingContext context)
+        {
+
+        }
+
+        public void OnResultExecuted(ResultExecutedContext context)
+        {
+
         }
     }
     #endregion
